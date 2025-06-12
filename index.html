@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Tic Tac Toe</title>
+    <!-- Tailwind CSS CDN für schnelles Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 2rem;
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            width: 300px; /* Feste Breite für das Spielfeld */
+            height: 300px; /* Feste Höhe für das Spielfeld */
+            margin: 20px auto;
+            border: 3px solid #4f46e5;
+            border-radius: 0.75rem;
+            overflow: hidden; /* Für abgerundete Ecken der Zellen */
+        }
+        .cell {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 3em;
+            font-weight: bold;
+            cursor: pointer;
+            border: 1px solid #cbd5e0; /* Leichtere Linien */
+            transition: background-color 0.2s ease-in-out;
+            color: #1a202c; /* Dunkler Text */
+        }
+        .cell:hover {
+            background-color: #e2e8f0;
+        }
+        .cell.X {
+            color: #ef4444; /* Rot für X */
+        }
+        .cell.O {
+            color: #22c55e; /* Grün für O */
+        }
+        .button {
+            background-color: #4f46e5;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.75rem;
+            font-size: 1.125rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+            box-shadow: 0 4px 10px rgba(79, 70, 229, 0.3);
+            display: inline-block;
+            margin-top: 1.5rem;
+        }
+        .button:hover {
+            background-color: #4338ca;
+            transform: translateY(-2px);
+        }
+        .button:active {
+            transform: translateY(0);
+        }
+        .message-box {
+            background-color: #ffebeb;
+            border: 1px solid #ef4444;
+            color: #ef4444;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            font-size: 0.9em;
+        }
+        .status-message {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        .player-info {
+            font-size: 1rem;
+            color: #4a5568;
+            margin-top: 0.5rem;
+        }
+        /* Mobile Anpassungen */
+        @media (max-width: 640px) {
+            .game-board {
+                width: 250px;
+                height: 250px;
+            }
+            .cell {
+                font-size: 2.5em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container flex flex-col items-center">
+        <h1 class="text-3xl font-bold text-gray-800 mb-4">Multiplayer Tic Tac Toe</h1>
+        <p class="text-lg text-gray-600 mb-6">Spiele gegen andere Spieler!</p>
+
+        <div id="loading" class="flex flex-col items-center">
+            <div class="loading-spinner"></div>
+            <p id="loading-text" class="text-gray-500 mt-2">Lädt Spiel...</p>
+        </div>
+
+        <!-- Startbildschirm für Namenseingabe und Spielsuche -->
+        <div id="start-section" class="flex flex-col items-center hidden">
+            <label for="player-name-input" class="text-xl font-semibold mb-3 text-gray-700">Dein Spielername:</label>
+            <input type="text" id="player-name-input" placeholder="Name eingeben"
+                   class="p-2 border border-gray-300 rounded-md text-center text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 w-full max-w-xs mb-4">
+            <button id="find-game-button" class="button">Spiel suchen / erstellen</button>
+            <div id="start-message" class="message-box hidden mt-4 bg-blue-100 border-blue-400 text-blue-700"></div>
+        </div>
+
+        <!-- Spielbereich -->
+        <div id="game-section" class="hidden flex flex-col items-center w-full">
+            <p id="game-status" class="status-message text-blue-600">Warte auf Spieler...</p>
+            <p class="player-info">Du bist: <span id="player-symbol" class="font-bold"></span> (<span id="player-name"></span>)</p>
+            <p class="player-info">Gegner: <span id="opponent-name"></span> (<span id="opponent-symbol"></span>)</p>
+
+            <div class="game-board" id="game-board">
+                <!-- Zellen werden dynamisch mit JavaScript erzeugt -->
+            </div>
+
+            <button id="reset-button" class="button hidden">Neues Spiel starten</button>
+            <div id="game-message-box" class="message-box hidden mt-4"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Firebase CDN Imports - ALLE AUF VERSION 11.9.1 AKTUALISIERT
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-auth.js";
+        import * as firestore from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+        
+        // --- NEUE FIREBASE-KONFIGURATION ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAdQ1mM10WAVUCVIg7Gvn3Lzo3VcSNuLNU",
+            authDomain: "tictactoemultiplayergame-a9ee1.firebaseapp.com",
+            projectId: "tictactoemultiplayergame-a9ee1",
+            storageBucket: "tictactoemultiplayergame-a9ee1.firebasestorage.app",
+            messagingSenderId: "383026664786",
+            appId: "1:383026664786:web:b53bd4c089bb8a468f168b",
+            measurementId: "G-H5J7VC5FHP"
+        };
+        // --- ENDE DER FIREBASE-KONFIGURATION ---
+
+        const appId = firebaseConfig.projectId; // projectId ist meistens die beste Wahl für die App-ID in Firestore-Pfaden
+        let app;
+        let db;
+        let auth;
+        let userId = 'Gast';
+        let playerName = '';
+        let currentPlayerSymbol = ''; // 'X' or 'O' for the current user
+        let opponentPlayerSymbol = ''; // 'X' or 'O' for the opponent
+        let currentGameState = null; // Stores the current game document from Firestore
+        let gameId = null; // ID of the current active game
+        let unsubscribeGameListener = null; // To detach the Firestore listener when game ends/resets
+
+        // DOM Elements
+        const loadingSection = document.getElementById('loading');
+        const startSection = document.getElementById('start-section');
+        const gameSection = document.getElementById('game-section');
+        const playerNameInput = document.getElementById('player-name-input');
+        const findGameButton = document.getElementById('find-game-button');
+        const startMessage = document.getElementById('start-message');
+        const gameStatusDisplay = document.getElementById('game-status');
+        const playerSymbolDisplay = document.getElementById('player-symbol');
+        const playerNameDisplay = document.getElementById('player-name');
+        const opponentNameDisplay = document.getElementById('opponent-name');
+        const opponentSymbolDisplay = document.getElementById('opponent-symbol');
+        const gameBoard = document.getElementById('game-board');
+        const resetButton = document.getElementById('reset-button');
+        const gameMessageBox = document.getElementById('game-message-box');
+
+        // Game state variables (local, updated from Firestore)
+        let board = Array(9).fill(''); // ['', '', '', ..., '']
+        let currentPlayerTurn = 'X'; // 'X' or 'O'
+        let gameStatus = 'waiting'; // 'waiting', 'playing', 'X_wins', 'O_wins', 'draw'
+
+        // --- Utility Functions ---
+        function showMessage(element, text, isError = false) {
+            element.textContent = text;
+            element.classList.remove('hidden');
+            if (isError) {
+                element.classList.remove('bg-blue-100', 'border-blue-400', 'text-blue-700');
+                element.classList.add('bg-red-100', 'border-red-400', 'text-red-700');
+            } else {
+                element.classList.remove('bg-red-100', 'border-red-400', 'text-red-700');
+                element.classList.add('bg-blue-100', 'border-blue-400', 'text-blue-700');
+            }
+        }
+
+        function hideMessage(element) {
+            element.classList.add('hidden');
+        }
+
+        // --- Firebase Initialization & Authentication ---
+        async function initializeFirebase() {
+            try {
+                if (!firebaseConfig.apiKey || !firebaseConfig.projectId) {
+                    showMessage(startMessage, "Firebase Konfiguration unvollständig. Bitte stelle sicher, dass alle Firebase-Details korrekt im Code hinterlegt sind.", true);
+                    return;
+                }
+
+                app = initializeApp(firebaseConfig);
+                db = firestore.getFirestore(app);
+                auth = getAuth(app);
+
+                // Sign in anonymously
+                await signInAnonymously(auth);
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Firebase Authentifizierung erfolgreich. Benutzer-ID:", userId);
+                        loadingSection.classList.add('hidden');
+                        checkPlayerNameAndGame(); // Proceed to check name and game
+                    } else {
+                        console.log("Benutzer ist abgemeldet.");
+                        showMessage(startMessage, "Fehler bei der Authentifizierung. Bitte versuche es erneut oder überprüfe deine Firebase-Projekt-Einstellungen.", true);
+                    }
+                });
+
+            } catch (error) {
+                console.error("Fehler bei der Firebase-Initialisierung oder Authentifizierung:", error);
+                showMessage(startMessage, `Fehler beim Starten des Spiels: ${error.message}. Bitte aktiviere "Anonyme Authentifizierung" in deiner Firebase-Konsole.`, true);
+            }
+        }
+
+        // --- Player Name & Game Logic ---
+        async function checkPlayerNameAndGame() {
+            const playerDocRef = firestore.doc(db, "players", userId);
+            const playerDocSnap = await firestore.getDoc(playerDocRef);
+
+            if (playerDocSnap.exists() && playerDocSnap.data().name) {
+                playerName = playerDocSnap.data().name;
+                console.log("Spielername gefunden:", playerName);
+                startSection.classList.remove('hidden'); // Show start section to find game
+                playerNameInput.value = playerName; // Pre-fill name
+                playerNameInput.disabled = true; // Disable input if name exists
+                findGameButton.textContent = "Spiel suchen / beitreten";
+            } else {
+                console.log("Spielername nicht gefunden. Zeige Namenseingabe an.");
+                startSection.classList.remove('hidden');
+                findGameButton.textContent = "Namen speichern & Spiel suchen";
+            }
+
+            findGameButton.addEventListener('click', handleFindOrCreateGame);
+        }
+
+        async function handleFindOrCreateGame() {
+            if (!playerNameInput.disabled) { // Only set name if input is enabled
+                const enteredName = playerNameInput.value.trim();
+                if (enteredName.length < 2 || enteredName.length > 20) {
+                    showMessage(startMessage, "Der Name muss zwischen 2 und 20 Zeichen lang sein.", true);
+                    return;
+                }
+                playerName = enteredName;
+                const playerDocRef = firestore.doc(db, "players", userId);
+                await firestore.setDoc(playerDocRef, { name: playerName }, { merge: true });
+                playerNameInput.disabled = true;
+                hideMessage(startMessage);
+                findGameButton.textContent = "Spiel suchen / beitreten";
+            }
+
+            showMessage(startMessage, "Suche nach einem Spiel...");
+            findGameButton.disabled = true;
+
+            try {
+                // Try to find an existing game
+                const gamesCollection = firestore.collection(db, "games");
+                const q = firestore.query(gamesCollection, firestore.where("status", "==", "waiting"), firestore.limit(1));
+                const querySnapshot = await firestore.getDocs(q);
+
+                if (!querySnapshot.empty) {
+                    // Join existing game
+                    const gameDoc = querySnapshot.docs[0];
+                    gameId = gameDoc.id;
+                    const gameData = gameDoc.data();
+
+                    if (gameData.playerXId === userId) {
+                        showMessage(startMessage, "Du bist bereits in diesem Spiel. Warte auf Gegner.");
+                        currentPlayerSymbol = 'X';
+                        opponentPlayerSymbol = 'O';
+                    } else if (!gameData.playerOId) {
+                        // Join as Player O
+                        await firestore.updateDoc(gameDoc.ref, {
+                            playerOId: userId,
+                            playerOName: playerName,
+                            status: "playing",
+                            lastMoveAt: firestore.serverTimestamp()
+                        });
+                        currentPlayerSymbol = 'O';
+                        opponentPlayerSymbol = 'X';
+                        showMessage(startMessage, "Spiel beigetreten als O! Warte auf X's Zug...");
+                    } else {
+                        // Should not happen if query is correct, but as fallback
+                        showMessage(startMessage, "Ein wartendes Spiel wurde gefunden, aber es ist bereits voll. Versuche es erneut oder erstelle ein neues Spiel.");
+                        findGameButton.disabled = false;
+                        return;
+                    }
+                    startGameSession(gameDoc.ref);
+
+                } else {
+                    // No waiting game, create a new one
+                    const newGameRef = firestore.doc(gamesCollection); // Generates a new ID
+                    gameId = newGameRef.id;
+                    await firestore.setDoc(newGameRef, {
+                        board: Array(9).fill(''),
+                        currentPlayer: 'X',
+                        status: 'waiting',
+                        playerXId: userId,
+                        playerXName: playerName,
+                        playerOId: null,
+                        playerOName: null,
+                        lastMoveAt: firestore.serverTimestamp(),
+                        createdAt: firestore.serverTimestamp()
+                    });
+                    currentPlayerSymbol = 'X';
+                    opponentPlayerSymbol = 'O';
+                    showMessage(startMessage, "Neues Spiel erstellt. Warte auf Gegner...");
+                    startGameSession(newGameRef);
+                }
+            } catch (error) {
+                console.error("Fehler beim Suchen/Erstellen des Spiels:", error);
+                showMessage(startMessage, `Fehler: ${error.message}. Stelle sicher, dass deine Firestore-Regeln korrekt sind.`, true);
+                findGameButton.disabled = false;
+            }
+        }
+
+        function startGameSession(gameRef) {
+            startSection.classList.add('hidden');
+            gameSection.classList.remove('hidden');
+            playerSymbolDisplay.textContent = currentPlayerSymbol;
+            playerNameDisplay.textContent = playerName;
+            
+            // Detach previous listener if any
+            if (unsubscribeGameListener) {
+                unsubscribeGameListener();
+            }
+
+            unsubscribeGameListener = firestore.onSnapshot(gameRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    currentGameState = docSnap.data();
+                    updateUI();
+                } else {
+                    showMessage(gameMessageBox, "Spiel wurde beendet oder nicht gefunden.", true);
+                    resetGameUI();
+                }
+            }, (error) => {
+                console.error("Fehler beim Abonnieren des Spielstatus:", error);
+                showMessage(gameMessageBox, `Fehler beim Laden des Spiels: ${error.message}. Überprüfe Firestore-Regeln.`, true);
+                resetGameUI();
+            });
+
+            // Setup board click listener once
+            if (!gameBoard.hasAttribute('data-listeners-set')) {
+                gameBoard.addEventListener('click', handleCellClick);
+                gameBoard.setAttribute('data-listeners-set', 'true');
+            }
+            resetButton.addEventListener('click', handleResetGame);
+        }
+
+        // --- UI Update & Game Logic ---
+        function updateUI() {
+            board = currentGameState.board;
+            currentPlayerTurn = currentGameState.currentPlayer;
+            gameStatus = currentGameState.status;
+            
+            // Update opponent info
+            if (currentPlayerSymbol === 'X' && currentGameState.playerOName) {
+                opponentNameDisplay.textContent = currentGameState.playerOName;
+                opponentSymbolDisplay.textContent = 'O';
+            } else if (currentPlayerSymbol === 'O' && currentGameState.playerXName) {
+                opponentNameDisplay.textContent = currentGameState.playerXName;
+                opponentSymbolDisplay.textContent = 'X';
+            } else {
+                opponentNameDisplay.textContent = 'Wartet...';
+                opponentSymbolDisplay.textContent = '';
+            }
+
+            // Render board
+            gameBoard.innerHTML = ''; // Clear existing cells
+            board.forEach((symbol, index) => {
+                const cell = document.createElement('div');
+                cell.classList.add('cell', 'flex', 'items-center', 'justify-center');
+                cell.textContent = symbol;
+                cell.dataset.index = index;
+                if (symbol === 'X') cell.classList.add('X');
+                if (symbol === 'O') cell.classList.add('O');
+                gameBoard.appendChild(cell);
+            });
+
+            // Update status message
+            if (gameStatus === 'waiting') {
+                gameStatusDisplay.textContent = "Warte auf Gegner...";
+                gameStatusDisplay.classList.remove('text-green-600', 'text-red-600');
+                gameStatusDisplay.classList.add('text-blue-600');
+                // Removed incrementButton logic as it's not present in Tic Tac Toe
+                resetButton.classList.add('hidden');
+            } else if (gameStatus === 'playing') {
+                resetButton.classList.add('hidden');
+                hideMessage(gameMessageBox);
+                if (currentPlayerTurn === currentPlayerSymbol) {
+                    gameStatusDisplay.textContent = `Dein Zug (${currentPlayerSymbol})`;
+                    gameStatusDisplay.classList.remove('text-red-600');
+                    gameStatusDisplay.classList.add('text-green-600');
+                } else {
+                    gameStatusDisplay.textContent = `Zug von Gegner (${currentPlayerTurn})`;
+                    gameStatusDisplay.classList.remove('text-green-600');
+                    gameStatusDisplay.classList.add('text-red-600');
+                }
+            } else if (gameStatus.includes('_wins')) {
+                resetButton.classList.remove('hidden');
+                const winner = gameStatus.split('_')[0];
+                if (winner === currentPlayerSymbol) {
+                    gameStatusDisplay.textContent = `Du hast gewonnen!`;
+                    gameStatusDisplay.classList.remove('text-blue-600', 'text-red-600');
+                    gameStatusDisplay.classList.add('text-green-600');
+                    // Removed confetti as it's not part of Tic Tac Toe
+                } else {
+                    gameStatusDisplay.textContent = `Du hast verloren! (${winner} gewinnt)`;
+                    gameStatusDisplay.classList.remove('text-blue-600', 'text-green-600');
+                    gameStatusDisplay.classList.add('text-red-600');
+                }
+            } else if (gameStatus === 'draw') {
+                resetButton.classList.remove('hidden');
+                gameStatusDisplay.textContent = "Unentschieden!";
+                gameStatusDisplay.classList.remove('text-green-600', 'text-red-600');
+                gameStatusDisplay.classList.add('text-blue-600');
+            }
+        }
+
+        async function handleCellClick(event) {
+            const index = event.target.dataset.index;
+            if (index === undefined) return; // Clicked on board, not a cell
+
+            const cellIndex = parseInt(index);
+
+            // Client-side validation before sending to Firestore
+            if (currentGameState.status !== 'playing') {
+                showMessage(gameMessageBox, "Das Spiel ist nicht im Spiel-Modus.", true);
+                return;
+            }
+            if (currentGameState.currentPlayer !== currentPlayerSymbol) {
+                showMessage(gameMessageBox, "Du bist nicht am Zug.", true);
+                return;
+            }
+            if (currentGameState.board[cellIndex] !== '') {
+                showMessage(gameMessageBox, "Dieses Feld ist bereits belegt.", true);
+                return;
+            }
+
+            hideMessage(gameMessageBox);
+
+            // Update board locally for responsiveness, then push to Firestore
+            const newBoard = [...currentGameState.board];
+            newBoard[cellIndex] = currentPlayerSymbol;
+
+            let nextPlayer = currentPlayerSymbol === 'X' ? 'O' : 'X';
+            let newStatus = 'playing';
+
+            const winner = checkWinner(newBoard);
+            if (winner) {
+                newStatus = `${winner}_wins`;
+            } else if (newBoard.every(cell => cell !== '')) {
+                newStatus = 'draw';
+            }
+
+            try {
+                const gameDocRef = firestore.doc(db, "games", gameId);
+                await firestore.updateDoc(gameDocRef, {
+                    board: newBoard,
+                    currentPlayer: nextPlayer,
+                    status: newStatus,
+                    lastMoveAt: firestore.serverTimestamp()
+                });
+                console.log("Spielzug aktualisiert:", newBoard, nextPlayer, newStatus);
+            } catch (error) {
+                console.error("Fehler beim Aktualisieren des Spielzugs:", error);
+                showMessage(gameMessageBox, `Fehler beim Senden deines Zuges: ${error.message}.`, true);
+            }
+        }
+
+        function checkWinner(currentBoard) {
+            const winPatterns = [
+                [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+                [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+                [0, 4, 8], [2, 4, 6]             // Diagonals
+            ];
+
+            for (let i = 0; i < winPatterns.length; i++) {
+                const [a, b, c] = winPatterns[i];
+                if (currentBoard[a] && currentBoard[a] === currentBoard[b] && currentBoard[a] === currentBoard[c]) {
+                    return currentBoard[a]; // Returns 'X' or 'O'
+                }
+            }
+            return null; // No winner
+        }
+
+        async function handleResetGame() {
+            // First, detach the current listener to avoid conflicts
+            if (unsubscribeGameListener) {
+                unsubscribeGameListener();
+                unsubscribeGameListener = null;
+            }
+            gameId = null;
+            currentGameState = null;
+            currentPlayerSymbol = '';
+            opponentPlayerSymbol = '';
+            board = Array(9).fill('');
+            currentPlayerTurn = 'X';
+            gameStatus = 'waiting';
+            
+            // Clear UI elements
+            gameBoard.innerHTML = '';
+            gameStatusDisplay.textContent = "Lädt...";
+            playerSymbolDisplay.textContent = '';
+            playerNameDisplay.textContent = '';
+            opponentNameDisplay.textContent = '';
+            opponentSymbolDisplay.textContent = '';
+            resetButton.classList.add('hidden');
+            hideMessage(gameMessageBox);
+
+            // Go back to the start section to find/create a new game
+            startSection.classList.remove('hidden');
+            gameSection.classList.add('hidden');
+            findGameButton.disabled = false;
+            showMessage(startMessage, "Bereit für ein neues Spiel.");
+            playerNameInput.value = playerName; // Keep name pre-filled
+        }
+
+        // Initialisierung, wenn das Fenster geladen ist
+        window.onload = initializeFirebase;
+    </script>
+</body>
+</html>
