@@ -32,6 +32,7 @@
             max-width: 90vw; /* Max width relative to viewport */
             aspect-ratio: 7 / 6; /* Maintain aspect ratio for the board */
             width: 100%; /* Ensure it takes full width of its container */
+            position: relative; /* Wichtig: Für absolute Positionierung der Drop-Areas */
         }
 
         .cell {
@@ -80,26 +81,19 @@
         }
 
         /* Styling für die Spalten-Überlagerung (Klickbereiche) */
-        .column-overlay-grid {
-            display: grid;
-            grid-template-columns: repeat(7, 1fr); /* Match board columns */
-            gap: 0.5rem; /* Match board gap */
-            padding: 1rem; /* Match board padding */
-            box-sizing: border-box;
-            position: absolute; /* Overlays the game-board */
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
+        /* Die column-overlay-grid ist jetzt nicht mehr nötig als eigenes Element,
+           da die column-drop-areas direkt im game-board als Grid-Elemente liegen */
+        /* Dies ist eine visuelle Hilfestellung, die man debuggen kann, falls nötig */
 
         .column-drop-area {
-            background-color: transparent;
+            /* Diese Bereiche nehmen jetzt den Raum im Grid ein,
+               da sie direkte Kinder von .game-board sind */
+            grid-row: 1 / span 6; /* Spannt über alle 6 Reihen des Boards */
+            background-color: transparent; /* Immer transparent */
             cursor: pointer;
-            z-index: 10; /* Above the cells */
-            /* Opacity and background for hover are now handled by JS for specific cells */
-            width: 100%;
-            height: 100%;
+            z-index: 10; /* Über den Zellen */
+            /* Transition für den Hover-Effekt ist jetzt auf den Zellen selbst */
+            /* Opacity hier ist nicht mehr relevant für den visuellen Hover */
         }
 
         /* Responsive adjustments */
@@ -116,10 +110,7 @@
                 width: 85%;
                 height: 85%;
             }
-            .column-overlay-grid {
-                gap: 0.3rem;
-                padding: 0.75rem;
-            }
+            /* .column-overlay-grid falls noch vorhanden, würde hier angepasst */
         }
 
         @media (max-width: 480px) {
@@ -142,10 +133,7 @@
                 padding: 0.8rem 1.5rem;
                 font-size: 0.9rem;
             }
-            .column-overlay-grid {
-                gap: 0.2rem;
-                padding: 0.5rem;
-            }
+            /* .column-overlay-grid falls noch vorhanden, würde hier angepasst */
         }
 
         /* Modern Button Styling */
@@ -256,12 +244,9 @@
                 </div>
             </div>
 
-            <div id="board" class="game-board relative">
+            <div id="board" class="game-board">
                 <!-- Zellen werden hier dynamisch eingefügt -->
-            </div>
-            <!-- Spalten-Drop-Bereiche über dem Board -->
-            <div id="column-drop-areas" class="column-overlay-grid">
-                <!-- Drop-Areas werden dynamisch eingefügt -->
+                <!-- Drop-Areas werden ebenfalls hier dynamisch als Children eingefügt -->
             </div>
 
             <button id="restart-game-btn" class="modern-button mt-4" style="background-image: linear-gradient(to right, #3F51B5, #2196F3); display: none;">
@@ -331,7 +316,7 @@
         const copyCodeBtn = document.getElementById('copy-code-btn');
         const copyStatus = document.getElementById('copy-status');
         const boardElement = document.getElementById('board');
-        const columnDropAreasElement = document.getElementById('column-drop-areas');
+        // columnDropAreasElement wird nicht mehr benötigt, da dropAreas direkt im boardElement sind
         const currentPlayerDisplay = document.getElementById('current-player-display');
         const gameStatusMessage = document.getElementById('game-status-message');
         const player1Indicator = document.getElementById('player-1-indicator');
@@ -526,8 +511,7 @@
          * Initialisiert das Spielbrett in der UI und die Klickbereiche.
          */
         function initializeBoardUI() {
-            boardElement.innerHTML = '';
-            columnDropAreasElement.innerHTML = '';
+            boardElement.innerHTML = ''; // Vorhandene Zellen entfernen
 
             // gameBoard initialisieren, bevor es verwendet wird
             gameBoard = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
@@ -544,17 +528,25 @@
             }
 
             // Klickbereiche für die Spalten erstellen (interaktive Überlagerung)
+            // Diese werden jetzt direkt als Kinder des boardElement hinzugefügt,
+            // und CSS Grid sorgt für die korrekte Positionierung.
             for (let c = 0; c < COLS; c++) {
                 const dropArea = document.createElement('div');
                 dropArea.classList.add('column-drop-area');
                 dropArea.dataset.col = c;
+                
+                // Setze grid-column für die Drop-Area, damit sie die Spalte abdeckt
+                dropArea.style.gridColumn = `${c + 1}`; 
+                // Setze grid-row für die Drop-Area, damit sie über alle Reihen geht
+                dropArea.style.gridRow = `1 / span ${ROWS}`; 
+
                 dropArea.addEventListener('click', () => handleColumnClick(c));
                 
                 // Hover-Effekte hinzufügen
                 dropArea.addEventListener('mouseover', () => highlightColumn(c, true));
                 dropArea.addEventListener('mouseout', () => highlightColumn(c, false));
 
-                columnDropAreasElement.appendChild(dropArea);
+                boardElement.appendChild(dropArea); // Füge direkt zum Board hinzu
             }
         }
 
@@ -564,10 +556,14 @@
          * @param {boolean} highlight - True zum Hervorheben, False zum Entfernen.
          */
         function highlightColumn(col, highlight) {
-            if (gameOver) return; // Nicht hervorheben, wenn Spiel beendet
+            // Defensive checks für gameBoard
+            if (gameOver || !gameBoard || gameBoard.length === 0 || !Array.isArray(gameBoard[0])) {
+                return;
+            }
             for (let r = 0; r < ROWS; r++) {
                 const cell = boardElement.querySelector(`.cell[data-row="${r}"][data-col="${col}"]`);
-                if (cell && gameBoard[r][col] === 0) { // Nur leere Zellen hervorheben
+                // Prüfe, ob die Zelle existiert und leer ist, bevor die Klasse hinzugefügt/entfernt wird
+                if (cell && gameBoard[r][col] === 0) { 
                     if (highlight) {
                         cell.classList.add('hovered');
                     } else {
@@ -603,13 +599,18 @@
                     cell.appendChild(disc);
                 }
             });
+            // Sicherstellen, dass Hover-Effekte auf dem aktualisierten Board korrekt sind
+            const allDropAreas = boardElement.querySelectorAll('.column-drop-area');
+            allDropAreas.forEach(area => {
+                highlightColumn(parseInt(area.dataset.col), false); // Alle Hover-Effekte zurücksetzen
+            });
         }
 
         /**
          * Aktiviert die Klickbereiche der Spalten.
          */
         function enableDropAreas() {
-            columnDropAreasElement.querySelectorAll('.column-drop-area').forEach(area => {
+            boardElement.querySelectorAll('.column-drop-area').forEach(area => {
                 area.style.pointerEvents = 'auto';
                 area.style.cursor = 'pointer';
             });
@@ -619,7 +620,7 @@
          * Deaktiviert die Klickbereiche der Spalten.
          */
         function disableDropAreas() {
-            columnDropAreasElement.querySelectorAll('.column-drop-area').forEach(area => {
+            boardElement.querySelectorAll('.column-drop-area').forEach(area => {
                 area.style.pointerEvents = 'none';
                 area.style.cursor = 'default';
                 highlightColumn(parseInt(area.dataset.col), false); // Hover-Effekte entfernen
