@@ -191,8 +191,21 @@
         import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, where, updateDoc, arrayUnion, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Globale Firebase-Variablen, die von der Canvas-Umgebung bereitgestellt werden
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        // Für GitHub Pages oder andere Hosting-Umgebungen, fügen Sie Ihre Firebase-Konfiguration hier direkt ein.
+        // Die __app_id Variable wird hier als Fallback 'in-a-row-mp' gesetzt.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'in-a-row-mp'; // Verwenden Sie eine feste ID für Ihr Projekt
+
+        // Ihre Firebase-Konfiguration
+        const firebaseConfig = {
+            apiKey: "AIzaSyC_tZYpxnZtlej1jHpTGCcfAGEnBfnE__E",
+            authDomain: "inarowmp.firebaseapp.com",
+            projectId: "inarowmp",
+            storageBucket: "inarowmp.firebasestorage.app",
+            messagingSenderId: "740685318051",
+            appId: "1:740685318051:web:2eb8cbe15e7de2d9e67c16",
+            measurementId: "G-MRFMHKBSS1"
+        };
+
 
         // Firebase-Initialisierung
         let app;
@@ -269,6 +282,7 @@
         async function initializeFirebaseAndAuth() {
             showScreen('loading-spinner');
             try {
+                // Initialisierung mit der direkt im Code bereitgestellten Konfiguration
                 app = initializeApp(firebaseConfig);
                 db = getFirestore(app);
                 auth = getAuth(app);
@@ -280,17 +294,15 @@
                         console.log("Firebase Authenticated. User ID:", userId);
                         showScreen('lobby-screen'); // Nach der Authentifizierung zur Lobby-Ansicht wechseln
                     } else {
-                        // Wenn kein Token vorhanden ist, melden Sie sich anonym an.
-                        if (typeof __initial_auth_token !== 'undefined') {
-                            await signInWithCustomToken(auth, __initial_auth_token);
-                        } else {
-                            await signInAnonymously(auth);
-                        }
+                        // Bei Hosting auf GitHub Pages gibt es kein __initial_auth_token.
+                        // Daher melden wir uns immer anonym an, wenn der Benutzer noch nicht angemeldet ist.
+                        await signInAnonymously(auth);
                     }
                 });
             } catch (error) {
                 console.error("Fehler bei der Firebase-Initialisierung oder Authentifizierung:", error);
-                showMessageBox("Fehler", "Firebase konnte nicht initialisiert werden. Bitte versuchen Sie es später erneut. " + error.message);
+                // Zusätzliche Fehlerinformationen für den Benutzer anzeigen
+                showMessageBox("Fehler", "Firebase konnte nicht initialisiert werden. Bitte versuchen Sie es später erneut. Details: " + error.message);
                 showScreen('lobby-screen'); // Immer noch zur Lobby-Ansicht wechseln, um Aktionen zu ermöglichen
             }
         }
@@ -313,6 +325,7 @@
             }
 
             const newLobbyCode = generateLobbyCode();
+            // Der Pfad muss die appId enthalten, die jetzt direkt im Code definiert ist
             const lobbyRef = doc(db, `artifacts/${appId}/public/data/lobbies`, newLobbyCode);
 
             // Initiales Spielbrett erstellen (leere Zellen)
@@ -357,6 +370,7 @@
                 return;
             }
 
+            // Der Pfad muss die appId enthalten, die jetzt direkt im Code definiert ist
             const lobbyRef = doc(db, `artifacts/${appId}/public/data/lobbies`, code);
             try {
                 const lobbySnap = await getDoc(lobbyRef);
@@ -611,6 +625,7 @@
          * @param {string} lobbyId - Die ID der Lobby.
          */
         function listenToLobbyChanges(lobbyId) {
+            // Der Pfad muss die appId enthalten, die jetzt direkt im Code definiert ist
             const lobbyRef = doc(db, `artifacts/${appId}/public/data/lobbies`, lobbyId);
             onSnapshot(lobbyRef, (docSnap) => {
                 if (docSnap.exists()) {
@@ -710,6 +725,7 @@
         restartGameBtn.addEventListener('click', async () => {
             if (!currentLobbyId) return;
 
+            // Der Pfad muss die appId enthalten, die jetzt direkt im Code definiert ist
             const lobbyRef = doc(db, `artifacts/${appId}/public/data/lobbies`, currentLobbyId);
             const initialBoard = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
 
