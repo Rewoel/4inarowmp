@@ -46,6 +46,12 @@
             position: relative; /* For disc animation */
             overflow: hidden; /* Hide overflow during disc animation */
             box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.1); /* Inner shadow for depth */
+            transition: background-color 0.2s ease-in-out; /* Für Hover-Effekt */
+        }
+
+        /* Hover-Effekt für leere Zellen in der ausgewählten Spalte */
+        .cell.hovered {
+            background-color: #bfdbfe; /* Etwas dunkler beim Hover */
         }
 
         .disc {
@@ -73,7 +79,7 @@
             transform: translate(-50%, -50%); /* Drop into centered position */
         }
 
-        /* New styling for the column overlay grid */
+        /* Styling für die Spalten-Überlagerung (Klickbereiche) */
         .column-overlay-grid {
             display: grid;
             grid-template-columns: repeat(7, 1fr); /* Match board columns */
@@ -91,15 +97,9 @@
             background-color: transparent;
             cursor: pointer;
             z-index: 10; /* Above the cells */
-            opacity: 0; /* Unsichtbar machen */
-            transition: opacity 0.2s ease-in-out;
-            /* Ensure it fills its grid cell */
+            /* Opacity and background for hover are now handled by JS for specific cells */
             width: 100%;
             height: 100%;
-        }
-        .column-drop-area:hover {
-            opacity: 0.2; /* Leicht sichtbar beim Hover */
-            background-color: rgba(0, 0, 0, 0.1);
         }
 
         /* Responsive adjustments */
@@ -365,14 +365,12 @@
          * @param {string} screenIdToShow - Die ID des anzuzeigenden Bildschirms.
          */
         function showScreen(screenIdToShow) {
-            // Verbergen aller Hauptbildschirme
             loadingSpinner.style.display = 'none';
             lobbyScreen.style.display = 'none';
             waitingScreen.style.display = 'none';
             gameScreen.style.display = 'none';
             errorMessage.style.display = 'none';
 
-            // Spezifischen Bildschirm anzeigen
             document.getElementById(screenIdToShow).style.display = 'flex';
         }
 
@@ -548,9 +546,34 @@
                 dropArea.classList.add('column-drop-area');
                 dropArea.dataset.col = c;
                 dropArea.addEventListener('click', () => handleColumnClick(c));
+                
+                // Hover-Effekte hinzufügen
+                dropArea.addEventListener('mouseover', () => highlightColumn(c, true));
+                dropArea.addEventListener('mouseout', () => highlightColumn(c, false));
+
                 columnDropAreasElement.appendChild(dropArea);
             }
         }
+
+        /**
+         * Hebt die Zellen in einer Spalte hervor oder entfernt die Hervorhebung.
+         * @param {number} col - Die Spaltennummer.
+         * @param {boolean} highlight - True zum Hervorheben, False zum Entfernen.
+         */
+        function highlightColumn(col, highlight) {
+            if (gameOver) return; // Nicht hervorheben, wenn Spiel beendet
+            for (let r = 0; r < ROWS; r++) {
+                const cell = boardElement.querySelector(`.cell[data-row="${r}"][data-col="${col}"]`);
+                if (cell && gameBoard[r][col] === 0) { // Nur leere Zellen hervorheben
+                    if (highlight) {
+                        cell.classList.add('hovered');
+                    } else {
+                        cell.classList.remove('hovered');
+                    }
+                }
+            }
+        }
+
 
         /**
          * Rendert das Spielbrett basierend auf dem aktuellen Zustand.
@@ -596,6 +619,7 @@
             columnDropAreasElement.querySelectorAll('.column-drop-area').forEach(area => {
                 area.style.pointerEvents = 'none';
                 area.style.cursor = 'default';
+                highlightColumn(parseInt(area.dataset.col), false); // Hover-Effekte entfernen
             });
         }
 
@@ -604,7 +628,7 @@
          * @param {number} col - Die angeklickte Spalte.
          */
         async function handleColumnClick(col) {
-            if (!currentLobbyId || !gameBoard || gameOver) { // Überprüfen auf lokalen gameOver Status
+            if (!currentLobbyId || !gameBoard || gameOver) {
                 return;
             }
 
@@ -646,6 +670,8 @@
             const nextPlayer = lobbyData.currentPlayer === PLAYER_1_VALUE ? PLAYER_2_VALUE : PLAYER_1_VALUE;
 
             try {
+                // Hover-Effekte sofort entfernen, um visuelles Feedback zu geben
+                highlightColumn(col, false); 
                 await updateDoc(lobbyRef, {
                     board: JSON.stringify(newBoard),
                     currentPlayer: nextPlayer,
@@ -784,9 +810,8 @@
                                 gameStatusMessage.textContent = '';
                             }
                         } else {
-                            // Spiel ist bereits beendet (Winner ist gesetzt)
-                            gameOver = true; // Lokalen Status setzen
-                            disableDropAreas(); // Klickbereiche deaktivieren
+                            gameOver = true;
+                            disableDropAreas();
                             if (data.winner === PLAYER_1_VALUE) {
                                 gameStatusMessage.textContent = 'Spieler 1 (Rot) hat gewonnen!';
                                 showMessageBox("Spiel beendet", "Spieler 1 (Rot) hat gewonnen!");
@@ -813,8 +838,8 @@
                         }
                     } else if (data.status === 'ended') {
                          showScreen('game-screen');
-                         gameOver = true; // Lokalen Status setzen
-                         disableDropAreas(); // Klickbereiche deaktivieren
+                         gameOver = true;
+                         disableDropAreas();
                          if (data.winner === PLAYER_1_VALUE) {
                              gameStatusMessage.textContent = 'Spieler 1 (Rot) hat gewonnen!';
                              showMessageBox("Spiel beendet", "Spieler 1 (Rot) hat gewonnen!");
@@ -832,8 +857,8 @@
                     showScreen('lobby-screen');
                     currentLobbyId = null;
                     currentPlayerNumber = 0;
-                    gameOver = false; // Lokalen Status zurücksetzen
-                    enableDropAreas(); // Sicherstellen, dass die Lobby-Buttons wieder klickbar sind
+                    gameOver = false;
+                    enableDropAreas();
                 }
             }, (error) => {
                 console.error("Fehler beim Abhören der Lobby-Änderungen:", error);
@@ -841,8 +866,8 @@
                 showScreen('lobby-screen');
                 currentLobbyId = null;
                 currentPlayerNumber = 0;
-                gameOver = false; // Lokalen Status zurücksetzen
-                enableDropAreas(); // Sicherstellen, dass die Lobby-Buttons wieder klickbar sind
+                gameOver = false;
+                enableDropAreas();
             });
         }
 
@@ -851,6 +876,9 @@
          */
         restartGameBtn.addEventListener('click', async () => {
             if (!currentLobbyId) return;
+
+            // Klickbereiche sofort deaktivieren, um Mehrfachklicks zu verhindern
+            disableDropAreas(); 
 
             const lobbyRef = doc(db, `artifacts/${appId}/public/data/lobbies`, currentLobbyId);
             const initialBoard = Array(ROWS).fill(null).map(() => Array(COLS).fill(0));
@@ -864,10 +892,12 @@
                     lastMoveTime: new Date().toISOString()
                 });
                 showMessageBox("Neues Spiel", "Das Spiel wurde neu gestartet!");
-                // Der onSnapshot-Listener wird den Rest des UI-Updates übernehmen
+                // Der onSnapshot-Listener wird den Rest des UI-Updates übernehmen (gameOver, enableDropAreas etc.)
             } catch (error) {
                 console.error("Fehler beim Neustarten des Spiels:", error);
                 showMessageBox("Fehler", `Spiel konnte nicht neu gestartet werden. ${error.message}`);
+                // Im Fehlerfall Klickbereiche wieder aktivieren, falls dies nicht durch onSnapshot passiert
+                enableDropAreas(); 
             }
         });
 
