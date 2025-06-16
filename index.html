@@ -73,14 +73,29 @@
             transform: translate(-50%, -50%); /* Drop into centered position */
         }
 
-        .column-drop-area {
-            position: absolute; /* Überlagert die Zellen */
-            /* Width calculated dynamically in JS for precise placement */
+        /* New styling for the column overlay grid */
+        .column-overlay-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr); /* Match board columns */
+            gap: 0.5rem; /* Match board gap */
+            padding: 1rem; /* Match board padding */
+            box-sizing: border-box;
+            position: absolute; /* Overlays the game-board */
+            top: 0;
+            left: 0;
+            width: 100%;
             height: 100%;
+        }
+
+        .column-drop-area {
+            background-color: transparent;
             cursor: pointer;
             z-index: 10; /* Above the cells */
             opacity: 0; /* Unsichtbar machen */
             transition: opacity 0.2s ease-in-out;
+            /* Ensure it fills its grid cell */
+            width: 100%;
+            height: 100%;
         }
         .column-drop-area:hover {
             opacity: 0.2; /* Leicht sichtbar beim Hover */
@@ -100,6 +115,10 @@
             .disc {
                 width: 85%;
                 height: 85%;
+            }
+            .column-overlay-grid {
+                gap: 0.3rem;
+                padding: 0.75rem;
             }
         }
 
@@ -122,6 +141,10 @@
             .btn, .input {
                 padding: 0.8rem 1.5rem;
                 font-size: 0.9rem;
+            }
+            .column-overlay-grid {
+                gap: 0.2rem;
+                padding: 0.5rem;
             }
         }
 
@@ -237,7 +260,7 @@
                 <!-- Zellen werden hier dynamisch eingefügt -->
             </div>
             <!-- Spalten-Drop-Bereiche über dem Board -->
-            <div id="column-drop-areas" class="absolute top-0 left-0 w-full h-full grid" style="grid-template-columns: repeat(7, 1fr); gap: 0.5rem; padding: 1rem; box-sizing: border-box;">
+            <div id="column-drop-areas" class="column-overlay-grid">
                 <!-- Drop-Areas werden dynamisch eingefügt -->
             </div>
 
@@ -292,6 +315,7 @@
         const PLAYER_1_VALUE = 1; // Entspricht Spieler 1 (Rot)
         const PLAYER_2_VALUE = 2; // Entspricht Spieler 2 (Gelb)
 
+        let gameOver = false; // Lokaler Zustand für Spielende
 
         // UI-Elemente
         const loadingSpinner = document.getElementById('loading-spinner');
@@ -306,7 +330,7 @@
         const lobbyCodeDisplay = document.getElementById('lobby-code-display');
         const copyCodeBtn = document.getElementById('copy-code-btn');
         const copyStatus = document.getElementById('copy-status');
-        const boardElement = document.getElementById('board'); // Dies ist jetzt das 'game-board'
+        const boardElement = document.getElementById('board');
         const columnDropAreasElement = document.getElementById('column-drop-areas');
         const currentPlayerDisplay = document.getElementById('current-player-display');
         const gameStatusMessage = document.getElementById('game-status-message');
@@ -346,12 +370,11 @@
             lobbyScreen.style.display = 'none';
             waitingScreen.style.display = 'none';
             gameScreen.style.display = 'none';
-            errorMessage.style.display = 'none'; // Fehler auf dem Lobby-Screen
+            errorMessage.style.display = 'none';
 
             // Spezifischen Bildschirm anzeigen
             document.getElementById(screenIdToShow).style.display = 'flex';
         }
-
 
         /**
          * Initialisiert Firebase und meldet den Benutzer an.
@@ -370,8 +393,6 @@
                         console.log("Firebase Authenticated. User ID:", userId);
                         showScreen('lobby-screen');
                     } else {
-                        // Bei Hosting auf GitHub Pages gibt es kein __initial_auth_token.
-                        // Daher melden wir uns immer anonym an, wenn der Benutzer noch nicht angemeldet ist.
                         await signInAnonymously(auth);
                     }
                 });
@@ -504,13 +525,13 @@
         });
 
         /**
-         * Initialisiert das Spielbrett in der UI.
+         * Initialisiert das Spielbrett in der UI und die Klickbereiche.
          */
         function initializeBoardUI() {
             boardElement.innerHTML = '';
             columnDropAreasElement.innerHTML = '';
 
-            // Create board cells
+            // Zellen für das Spielbrett erstellen (visuell)
             for (let r = 0; r < ROWS; r++) {
                 for (let c = 0; c < COLS; c++) {
                     const cell = document.createElement('div');
@@ -521,14 +542,10 @@
                 }
             }
 
-            // Create column drop areas
+            // Klickbereiche für die Spalten erstellen (interaktive Überlagerung)
             for (let c = 0; c < COLS; c++) {
                 const dropArea = document.createElement('div');
                 dropArea.classList.add('column-drop-area');
-                // Calculate width for each column dynamically
-                const columnWidth = 100 / COLS;
-                dropArea.style.width = `${columnWidth}%`;
-                dropArea.style.left = `${c * columnWidth}%`;
                 dropArea.dataset.col = c;
                 dropArea.addEventListener('click', () => handleColumnClick(c));
                 columnDropAreasElement.appendChild(dropArea);
@@ -563,11 +580,31 @@
         }
 
         /**
+         * Aktiviert die Klickbereiche der Spalten.
+         */
+        function enableDropAreas() {
+            columnDropAreasElement.querySelectorAll('.column-drop-area').forEach(area => {
+                area.style.pointerEvents = 'auto';
+                area.style.cursor = 'pointer';
+            });
+        }
+
+        /**
+         * Deaktiviert die Klickbereiche der Spalten.
+         */
+        function disableDropAreas() {
+            columnDropAreasElement.querySelectorAll('.column-drop-area').forEach(area => {
+                area.style.pointerEvents = 'none';
+                area.style.cursor = 'default';
+            });
+        }
+
+        /**
          * Behandelt den Klick auf eine Zelle/Spalte.
          * @param {number} col - Die angeklickte Spalte.
          */
         async function handleColumnClick(col) {
-            if (!currentLobbyId || !gameBoard || gameStatusMessage.textContent.includes("gewonnen") || gameStatusMessage.textContent.includes("Unentschieden")) {
+            if (!currentLobbyId || !gameBoard || gameOver) { // Überprüfen auf lokalen gameOver Status
                 return;
             }
 
@@ -652,7 +689,6 @@
             }
 
             // Check diagonal (top-left to bottom-right)
-            let r_diag1, c_diag1;
             for (let r = 0; r <= ROWS - 4; r++) {
                 for (let c = 0; c <= COLS - 4; c++) {
                     if (boardToCheck[r][c] === player &&
@@ -665,7 +701,6 @@
             }
 
             // Check diagonal (top-right to bottom-left)
-            let r_diag2, c_diag2;
             for (let r = 0; r <= ROWS - 4; r++) {
                 for (let c = 3; c < COLS; c++) {
                     if (boardToCheck[r][c] === player &&
@@ -709,6 +744,8 @@
                     renderBoard();
 
                     if (data.status === 'waiting') {
+                        gameOver = false; // Zurücksetzen, falls von einem beendeten Spiel in den Wartezustand gewechselt wird
+                        disableDropAreas(); // Klickbereiche deaktivieren
                         if (data.player1Id === userId) {
                             lobbyCodeDisplay.textContent = lobbyId;
                             showScreen('waiting-screen');
@@ -719,6 +756,8 @@
                     } else if (data.status === 'playing') {
                         showScreen('game-screen');
                         restartGameBtn.style.display = 'none';
+                        gameOver = false; // Spiel ist aktiv, nicht beendet
+                        enableDropAreas(); // Klickbereiche aktivieren
 
                         if (data.currentPlayer === PLAYER_1_VALUE) {
                             currentPlayerDisplay.textContent = 'Spieler 1 (Rot) ist am Zug';
@@ -745,6 +784,9 @@
                                 gameStatusMessage.textContent = '';
                             }
                         } else {
+                            // Spiel ist bereits beendet (Winner ist gesetzt)
+                            gameOver = true; // Lokalen Status setzen
+                            disableDropAreas(); // Klickbereiche deaktivieren
                             if (data.winner === PLAYER_1_VALUE) {
                                 gameStatusMessage.textContent = 'Spieler 1 (Rot) hat gewonnen!';
                                 showMessageBox("Spiel beendet", "Spieler 1 (Rot) hat gewonnen!");
@@ -752,7 +794,7 @@
                                     particleCount: 150,
                                     spread: 90,
                                     origin: { y: 0.6 },
-                                    colors: ['#e74c3c', '#f1c40f', '#4a90e2', '#d0e6f7'] // Farben passend zum neuen Design
+                                    colors: ['#e74c3c', '#f1c40f', '#4a90e2', '#d0e6f7']
                                 });
                             } else if (data.winner === PLAYER_2_VALUE) {
                                 gameStatusMessage.textContent = 'Spieler 2 (Gelb) hat gewonnen!';
@@ -771,6 +813,8 @@
                         }
                     } else if (data.status === 'ended') {
                          showScreen('game-screen');
+                         gameOver = true; // Lokalen Status setzen
+                         disableDropAreas(); // Klickbereiche deaktivieren
                          if (data.winner === PLAYER_1_VALUE) {
                              gameStatusMessage.textContent = 'Spieler 1 (Rot) hat gewonnen!';
                              showMessageBox("Spiel beendet", "Spieler 1 (Rot) hat gewonnen!");
@@ -788,6 +832,8 @@
                     showScreen('lobby-screen');
                     currentLobbyId = null;
                     currentPlayerNumber = 0;
+                    gameOver = false; // Lokalen Status zurücksetzen
+                    enableDropAreas(); // Sicherstellen, dass die Lobby-Buttons wieder klickbar sind
                 }
             }, (error) => {
                 console.error("Fehler beim Abhören der Lobby-Änderungen:", error);
@@ -795,6 +841,8 @@
                 showScreen('lobby-screen');
                 currentLobbyId = null;
                 currentPlayerNumber = 0;
+                gameOver = false; // Lokalen Status zurücksetzen
+                enableDropAreas(); // Sicherstellen, dass die Lobby-Buttons wieder klickbar sind
             });
         }
 
@@ -816,7 +864,7 @@
                     lastMoveTime: new Date().toISOString()
                 });
                 showMessageBox("Neues Spiel", "Das Spiel wurde neu gestartet!");
-                restartGameBtn.style.display = 'none';
+                // Der onSnapshot-Listener wird den Rest des UI-Updates übernehmen
             } catch (error) {
                 console.error("Fehler beim Neustarten des Spiels:", error);
                 showMessageBox("Fehler", `Spiel konnte nicht neu gestartet werden. ${error.message}`);
